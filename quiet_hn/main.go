@@ -8,13 +8,17 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gophercises/quiet_hn/hn"
 )
 
+var wg sync.WaitGroup
+
 func main() {
 	// parse flags
+
 	var port, numStories int
 	flag.IntVar(&port, "port", 3000, "the port to start the web server on")
 	flag.IntVar(&numStories, "num_stories", 30, "the number of top stories to display")
@@ -32,28 +36,23 @@ func handler(numStories int, tpl *template.Template) http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		var client hn.Client
-		ids, err := client.TopItems()
+		ids, err := client.TopItems(numStories)
 		if err != nil {
 			http.Error(w, "Failed to load top stories", http.StatusInternalServerError)
 			return
 		}
 		var stories []item
-		for _, id := range ids {
-			hnItem, err := client.GetItem(id)
-			if err != nil {
-				continue
-			}
-			item := parseHNItem(hnItem)
-			if isStoryLink(item) {
-				stories = append(stories, item)
-				if len(stories) >= numStories {
-					break
-				}
-			}
-		}
+
+		fetchAllStories(client, ids, &stories)
+		//time.Sleep(time.Second * 2)
+		// for <-c < numStories {
+		// 	fmt.Println(<-c)
+		// }
+		wg.Wait()
+		time.Sleep(time.Millisecond * 100)
 		data := templateData{
 			Stories: stories,
-			Time:    time.Now().Sub(start),
+			Time:    time.Since(start),
 		}
 		err = tpl.Execute(w, data)
 		if err != nil {
@@ -61,6 +60,30 @@ func handler(numStories int, tpl *template.Template) http.HandlerFunc {
 			return
 		}
 	})
+}
+
+func fetchAllStories(client hn.Client, ids []int, stories *[]item) {
+	fmt.Println(len(ids))
+	for id, _ := range ids {
+
+		wg.Add(1)
+		go fetchStory(client, id, stories)
+	}
+
+}
+
+func fetchStory(client hn.Client, id int, stories *[]item) {
+	defer wg.Done()
+
+	hnItem, _ := client.GetItem(id)
+
+	item := parseHNItem(hnItem)
+
+	if isStoryLink(item) {
+		*stories = append(*stories, item)
+
+	}
+
 }
 
 func isStoryLink(item item) bool {

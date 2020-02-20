@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 )
 
 const (
@@ -25,15 +26,26 @@ func (c *Client) defaultify() {
 	}
 }
 
+type Cache struct {
+	Map       map[int]Item
+	timeSince time.Time
+}
+
+var cache = Cache{
+	Map:       make(map[int]Item),
+	timeSince: time.Now(),
+}
+
 // TopItems returns the ids of roughly 450 top items in decreasing order. These
 // should map directly to the top 450 things you would see on HN if you visited
 // their site and kept going to the next page.
 //
 // TopItmes does not filter out job listings or anything else, as the type of
 // each item is unknown without further API calls.
-func (c *Client) TopItems() ([]int, error) {
+func (c *Client) TopItems(params ...int) ([]int, error) {
 	c.defaultify()
 	resp, err := http.Get(fmt.Sprintf("%s/topstories.json", c.apiBase))
+
 	if err != nil {
 		return nil, err
 	}
@@ -41,6 +53,10 @@ func (c *Client) TopItems() ([]int, error) {
 	var ids []int
 	dec := json.NewDecoder(resp.Body)
 	err = dec.Decode(&ids)
+	if len(params) > 0 {
+		ids = ids[0:params[0]]
+	}
+
 	if err != nil {
 		return nil, err
 	}
@@ -49,6 +65,15 @@ func (c *Client) TopItems() ([]int, error) {
 
 // GetItem will return the Item defined by the provided ID.
 func (c *Client) GetItem(id int) (Item, error) {
+
+	val, ok := cache.Map[id]
+	if ok == true {
+		return val, nil
+	}
+	if time.Since(cache.timeSince).Minutes() > 5.0 {
+		cache.Map = make(map[int]Item)
+		cache.timeSince = time.Now()
+	}
 	c.defaultify()
 	var item Item
 	resp, err := http.Get(fmt.Sprintf("%s/item/%d.json", c.apiBase, id))
@@ -60,6 +85,9 @@ func (c *Client) GetItem(id int) (Item, error) {
 	err = dec.Decode(&item)
 	if err != nil {
 		return item, err
+	}
+	if ok == false {
+		cache.Map[id] = item
 	}
 	return item, nil
 }
