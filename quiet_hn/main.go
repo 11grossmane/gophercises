@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -42,16 +43,24 @@ func handler(numStories int, tpl *template.Template) http.HandlerFunc {
 			return
 		}
 		var stories []item
-		wg.Add(numStories)
-		for _, id := range ids {
-			if len(stories) >= numStories {
-				break
-			}
-
-			go fetchStory(client, id, &stories)
-			time.Sleep(15 * time.Millisecond)
+		channelResults := []Results{}
+		ch := make(chan Results)
+		for idx, id := range ids[0:30] {
+			fmt.Println(idx)
+			go fetchStory(client, id, idx, &stories, &ch)
+			time.Sleep(5 * time.Millisecond)
 		}
-		wg.Wait()
+		for i := 0; i < numStories; i++ {
+			channelResults = append(channelResults, <-ch) //this blocks execution until channelResults receives something
+
+			//fmt.Println(channelResults)
+		}
+		sort.Slice(channelResults, func(i, j int) bool {
+			return channelResults[i].pos < channelResults[j].pos
+		})
+		for _, res := range channelResults {
+			stories = append(stories, res.item)
+		}
 
 		data := templateData{
 			Stories: stories,
@@ -67,15 +76,17 @@ func handler(numStories int, tpl *template.Template) http.HandlerFunc {
 
 var count int
 
-func fetchStory(client hn.Client, id int, stories *[]item) {
-	hnItem, _ := client.GetItem(id)
-
+func fetchStory(client hn.Client, id int, idx int, stories *[]item, ch *chan Results) {
+	hnItem, err := client.GetItem(id)
+	if err != nil {
+		//fmt.Println(err)
+	}
 	item := parseHNItem(hnItem)
 
-	if isStoryLink(item) && len(*stories) < 30 {
+	if err == nil {
 
-		defer wg.Done()
-		*stories = append(*stories, item)
+		*ch <- Results{item: item, pos: idx}
+		//*stories = append(*stories, item)
 	}
 
 }
@@ -102,4 +113,10 @@ type item struct {
 type templateData struct {
 	Stories []item
 	Time    time.Duration
+}
+
+type Results struct {
+	item item
+	err  error
+	pos  int
 }
