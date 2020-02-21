@@ -65,7 +65,6 @@ func (c *Client) TopItems(params ...int) ([]int, error) {
 
 // GetItem will return the Item defined by the provided ID.
 func (c *Client) GetItem(id int) (Item, error) {
-
 	val, ok := cache.Map[id]
 	if ok == true {
 		return val, nil

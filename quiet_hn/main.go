@@ -47,7 +47,7 @@ func handler(numStories int, tpl *template.Template) http.HandlerFunc {
 		ch := make(chan Results)
 		for idx, id := range ids[0:30] {
 			fmt.Println(idx)
-			go fetchStory(client, id, idx, &stories, &ch)
+			go fetchStory(id, idx, &stories, &ch)
 			time.Sleep(5 * time.Millisecond)
 		}
 		for i := 0; i < numStories; i++ {
@@ -76,7 +76,9 @@ func handler(numStories int, tpl *template.Template) http.HandlerFunc {
 
 var count int
 
-func fetchStory(client hn.Client, id int, idx int, stories *[]item, ch *chan Results) {
+func fetchStory(id int, idx int, stories *[]item, ch *chan Results) {
+	client := hn.Client{}
+
 	hnItem, err := client.GetItem(id)
 	if err != nil {
 		//fmt.Println(err)
