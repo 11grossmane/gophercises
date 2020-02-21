@@ -42,12 +42,12 @@ func handler(numStories int, tpl *template.Template) http.HandlerFunc {
 			return
 		}
 		var stories []item
+		for _, id := range ids {
+			wg.Add(1)
+			fmt.Println(id)
+			go fetchStory(client, id, &stories)
+		}
 
-		fetchAllStories(client, ids, &stories)
-		//time.Sleep(time.Second * 2)
-		// for <-c < numStories {
-		// 	fmt.Println(<-c)
-		// }
 		wg.Wait()
 		time.Sleep(time.Millisecond * 100)
 		data := templateData{
@@ -60,16 +60,6 @@ func handler(numStories int, tpl *template.Template) http.HandlerFunc {
 			return
 		}
 	})
-}
-
-func fetchAllStories(client hn.Client, ids []int, stories *[]item) {
-	fmt.Println(len(ids))
-	for id, _ := range ids {
-
-		wg.Add(1)
-		go fetchStory(client, id, stories)
-	}
-
 }
 
 func fetchStory(client hn.Client, id int, stories *[]item) {
