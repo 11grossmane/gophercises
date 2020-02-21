@@ -36,20 +36,23 @@ func handler(numStories int, tpl *template.Template) http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		var client hn.Client
-		ids, err := client.TopItems(numStories)
+		ids, err := client.TopItems()
 		if err != nil {
 			http.Error(w, "Failed to load top stories", http.StatusInternalServerError)
 			return
 		}
 		var stories []item
+		wg.Add(numStories)
 		for _, id := range ids {
-			wg.Add(1)
-			fmt.Println(id)
-			go fetchStory(client, id, &stories)
-		}
+			if len(stories) >= numStories {
+				break
+			}
 
+			go fetchStory(client, id, &stories)
+			time.Sleep(15 * time.Millisecond)
+		}
 		wg.Wait()
-		time.Sleep(time.Millisecond * 100)
+
 		data := templateData{
 			Stories: stories,
 			Time:    time.Since(start),
@@ -62,16 +65,17 @@ func handler(numStories int, tpl *template.Template) http.HandlerFunc {
 	})
 }
 
-func fetchStory(client hn.Client, id int, stories *[]item) {
-	defer wg.Done()
+var count int
 
+func fetchStory(client hn.Client, id int, stories *[]item) {
 	hnItem, _ := client.GetItem(id)
 
 	item := parseHNItem(hnItem)
 
-	if isStoryLink(item) {
-		*stories = append(*stories, item)
+	if isStoryLink(item) && len(*stories) < 30 {
 
+		defer wg.Done()
+		*stories = append(*stories, item)
 	}
 
 }
